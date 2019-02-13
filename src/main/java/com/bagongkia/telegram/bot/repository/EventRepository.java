@@ -10,6 +10,7 @@ import com.bagongkia.telegram.bot.model.Event;
 public interface EventRepository extends CrudRepository<Event, Long> {
 
 	List<Event> findAll();
+	List<Event> findByChatIdAndStatus(Long chatId, String status);
 	Optional<Event> findByEventCode(String eventCode);
-	Optional<Event> findByChatIdAndStatus(Long chatId, String status);
+	Optional<Event> findByEventCodeAndStatus(String eventCode, String status);
 }

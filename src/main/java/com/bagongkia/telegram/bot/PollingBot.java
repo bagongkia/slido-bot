@@ -20,10 +20,10 @@ import com.bagongkia.telegram.bot.service.EventService;
 @Component
 public class PollingBot extends TelegramLongPollingBot {
 	
-	@Value("com.bagongkia.telegram.bot.username")
+	@Value("${com.bagongkia.telegram.bot.username}")
 	private String botUsername;
 	
-	@Value("com.bagongkia.telegram.bot.token")
+	@Value("${com.bagongkia.telegram.bot.token}")
 	private String botToken;
 	
 	@Autowired
@@ -35,26 +35,30 @@ public class PollingBot extends TelegramLongPollingBot {
 	@Override
 	public void onUpdateReceived(Update update) {
 		if (update.hasMessage() && update.getMessage().hasText()) {
+			
+			SendMessage message = null;
 			ChatStatusEnum nextChatStatus = ChatStatusEnum.WELCOME;
 			String text = null;
+			String parseMode = "Markdown";
 			
-			if ("/create_event".equals(update.getMessage().getText())) {
-				eventService.createEvent(update.getMessage().getChatId());
-				nextChatStatus = ChatStatusEnum.INPUT_EVENT_NAME;
-			} else if ("/start_event".equals(update.getMessage().getText())) {
-				nextChatStatus = ChatStatusEnum.START_EVENT_CODE;
-			} else if ("/join_event".equals(update.getMessage().getText())) {
-				nextChatStatus = ChatStatusEnum.JOIN_EVENT_CODE;
-			} else if ("/ask_question".equals(update.getMessage().getText())) {
-				nextChatStatus = ChatStatusEnum.ASK_QUESTION;
-			} else if ("/list_question".equals(update.getMessage().getText())) {
-				nextChatStatus = ChatStatusEnum.LIST_QUESTION;
-			} else if ("/answer_question".equals(update.getMessage().getText())) {
-				nextChatStatus = ChatStatusEnum.ANSWER_QUESTION;
-			} else {
-				Optional<ChatStatus> optChatStatus = chatStatusService.getStatus(update.getMessage().getChatId());  
-				if (optChatStatus.isPresent()) {
-					try {
+			try {
+				if ("/create_event".equals(update.getMessage().getText())) {
+					eventService.createEvent(update.getMessage().getChatId());
+					nextChatStatus = ChatStatusEnum.INPUT_EVENT_NAME;
+				} else if ("/start_event".equals(update.getMessage().getText())) {
+					message = eventService.startEvent(update.getMessage().getChatId());
+					nextChatStatus = ChatStatusEnum.START_EVENT_CODE;
+				} else if ("/join_event".equals(update.getMessage().getText())) {
+					nextChatStatus = ChatStatusEnum.JOIN_EVENT_CODE;
+				} else if ("/ask_question".equals(update.getMessage().getText())) {
+					nextChatStatus = ChatStatusEnum.ASK_QUESTION;
+				} else if ("/list_question".equals(update.getMessage().getText())) {
+					nextChatStatus = ChatStatusEnum.LIST_QUESTION;
+				} else if ("/answer_question".equals(update.getMessage().getText())) {
+					nextChatStatus = ChatStatusEnum.ANSWER_QUESTION;
+				} else {
+					Optional<ChatStatus> optChatStatus = chatStatusService.getStatus(update.getMessage().getChatId());  
+					if (optChatStatus.isPresent()) {
 						if (ChatStatusEnum.INPUT_EVENT_NAME.getCode().equals(optChatStatus.get().getStatus())) {
 							eventService.initEvent(update.getMessage().getChatId(), optChatStatus.get().getStatus(), update.getMessage().getText());
 							nextChatStatus = ChatStatusEnum.INPUT_EVENT_LOCATION;
@@ -62,30 +66,60 @@ public class PollingBot extends TelegramLongPollingBot {
 							eventService.initEvent(update.getMessage().getChatId(), optChatStatus.get().getStatus(), update.getMessage().getText());
 							nextChatStatus = ChatStatusEnum.INPUT_EVENT_DATE;
 						} else if (ChatStatusEnum.INPUT_EVENT_DATE.getCode().equals(optChatStatus.get().getStatus())) {
-							eventService.initEvent(update.getMessage().getChatId(), optChatStatus.get().getStatus(), update.getMessage().getText());
+							text = eventService.inputEventDate(update.getMessage().getChatId(), update.getMessage().getText());
+							parseMode = "HTML";
 							nextChatStatus = ChatStatusEnum.EVENT_CREATED;
 						} else if (ChatStatusEnum.START_EVENT_CODE.getCode().equals(optChatStatus.get().getStatus())) {
-							eventService.startEvent(update.getMessage().getChatId(), update.getMessage().getText());
 							nextChatStatus = ChatStatusEnum.EVENT_STARTED;
 						} else if (ChatStatusEnum.JOIN_EVENT_CODE.getCode().equals(optChatStatus.get().getStatus())) {
 							eventService.joinEvent(update.getMessage().getChatId(), update.getMessage().getText(), update.getMessage().getChat().getFirstName());
 							nextChatStatus = ChatStatusEnum.EVENT_JOINED;
 						}
-					} catch(ParseException e) {
-						text = "Invalid date format. Retype the event date (format: dd-MMM-yyyy, ex: 11-APR-2019).";
-					} catch(EventException e) {
-						text = e.getMessage();
 					}
 				}
+			} catch(ParseException e) {
+				text = "Invalid date format. Retype the event date (format: dd-MMM-yyyy, ex: 11-APR-2019).";
+			} catch(EventException e) {
+				text = e.getMessage();
 			}
 			
 			chatStatusService.setChatStatus(update.getMessage().getChatId(), nextChatStatus);
-			SendMessage message = new SendMessage()
-	                .setChatId(update.getMessage().getChatId())
-	                .setText(text == null ? nextChatStatus.getMessage() : text)
-	                .setParseMode("Markdown");
+			if (message == null) {
+				message = new SendMessage()
+		                .setChatId(update.getMessage().getChatId())
+		                .setText(text == null ? nextChatStatus.getMessage() : text)
+		                .setParseMode(parseMode);
+			}
 			
 			try {
+	            execute(message);
+	        } catch (TelegramApiException e) {
+	            e.printStackTrace();
+	        }
+	    } else if (update.hasCallbackQuery() && update.getCallbackQuery().getData() != null && !update.getCallbackQuery().getData().isEmpty()) {
+	    	SendMessage message = null;
+	    	String text = null;
+	    	String parseMode = "Markdown";
+	    	ChatStatusEnum nextChatStatus = ChatStatusEnum.WELCOME;
+	    	
+	    	Long chatId = update.getCallbackQuery().getMessage().getChat().getId();
+	    	Optional<ChatStatus> optChatStatus = chatStatusService.getStatus(chatId);
+	    	
+			if (optChatStatus.isPresent()) {
+				if (ChatStatusEnum.START_EVENT_CODE.getCode().equals(optChatStatus.get().getStatus())) {
+					message = eventService.startEvent(chatId, update.getCallbackQuery().getData());
+				}
+			}
+			
+			chatStatusService.setChatStatus(chatId, nextChatStatus);
+			if (message == null) {
+				message = new SendMessage()
+		                .setChatId(chatId)
+		                .setText(text == null ? nextChatStatus.getMessage() : text)
+		                .setParseMode(parseMode);
+			}
+	    	
+	    	try {
 	            execute(message);
 	        } catch (TelegramApiException e) {
 	            e.printStackTrace();
