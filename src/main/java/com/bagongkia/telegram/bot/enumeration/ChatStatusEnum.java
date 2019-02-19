@@ -16,7 +16,10 @@ public enum ChatStatusEnum {
 	ASK_QUESTION("009", "Type your question."),
 	QUESTION_ASKED("010", ""),
 	LIST_QUESTION("011", ""),
-	ANSWER_QUESTION("012", "");
+	ANSWER_QUESTION("012", ""),
+	CLOSE_EVENT_CODE("013", "Type the event code to confirm."),
+	EVENT_CLOSED("014", "Event has closed.");
+	
 	
 	private final String code;
 	private final String message;
